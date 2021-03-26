@@ -12,6 +12,7 @@
 #include <Arduino.h>
 #include <Ethernet.h>
 #include <PubSubClient.h>
+#include <DHT_U.h>
 
 // Update these with values suitable for your network.
 byte mac[]    = {  0xDE, 0xED, 0xBA, 0xFE, 0xFE, 0xED };
@@ -25,6 +26,38 @@ void callback(char* topic, byte* payload, unsigned int length) {
 EthernetClient ethClient;
 PubSubClient client(server, 1883, callback, ethClient);
 
+//On définie les pins
+#define DHT11PIN 2     // PIN pour la sonde DHT11
+#define Relais_1 4
+#define Relais_2 5
+
+// On créé l'objet pour la sonde DHT11
+DHT dht(DHT11PIN, DHT11);
+
+// Variables pour comparer l'ancienne valeur des sondes à la nouvelle
+int t_old = 0;
+int h_old = 0;
+
+// POUR DEBUG
+// Variable pour compter le nombre de connexion échouée de client.connect
+int NombreErreurReseau = 0 ;
+int NombreErreurReseau_old = -1;
+int NombreProblemeDeconnexion = 0 ;
+boolean etat_ventil_1 = 0;
+boolean etat_ventil_2 = 0;
+boolean etat_ventil_1_old = 0;
+boolean etat_ventil_2_old = 0;
+
+// Variable de Tempo pour déclenchement de lecture
+unsigned long previousMillis = 0;
+
+//MQTT définition
+#define Clientarduino "Clientarduino"
+#define MQTT_USERNAME "homeassistant"
+#define MQTT_KEY "ohs8Phookeod6chae0ENg5aingeite8Jaebooziheevug0huinei8Ood9iePoh9l"
+
+
+
 void setup()
 {
   Ethernet.begin(mac, ip);
@@ -32,11 +65,31 @@ void setup()
   // combined length of clientId, username and password exceed this use the
   // following to increase the buffer size:
   // client.setBufferSize(255);
-  
-  if (client.connect("arduinoClient", "homeassistant", "ohs8Phookeod6chae0ENg5aingeite8Jaebooziheevug0huinei8Ood9iePoh9l")) {
-    client.publish("homeassistant/sensor/Baie/temperature","hello world");
-    client.subscribe("inTopic");
+   
+  if (client.connect(Clientarduino, MQTT_USERNAME, MQTT_KEY)) {
+    client.publish("outTopic","hello world");
+    client.subscribe("inTopic");}
+  else {
+      Serial.print("echec, code erreur= ");
+      Serial.println(client.state());
   }
+
+  // On initialise la sonde DHT11
+  dht.begin();
+
+  //Définition des sortie pour les relais
+  pinMode(Relais_1, OUTPUT);
+  pinMode(Relais_2, OUTPUT);
+
+  // On ouvre le port série pour DEBUG
+  Serial.begin(9600);
+
+  //Pour DEBUG
+  //Obtenir l'adresse IP de l'arduino
+  IPAddress IP_Arduino = Ethernet.localIP();
+  Serial.println(IP_Arduino);
+
+  Serial.println(F("*** Fin de la configuration ***"));
 }
 
 void loop()
