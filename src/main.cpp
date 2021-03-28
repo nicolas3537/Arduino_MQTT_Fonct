@@ -31,12 +31,16 @@ PubSubClient client(server, 1883, callback, ethClient);
 #define Relais_1 4
 #define Relais_2 5
 
+#define debug 0
+
 // On créé l'objet pour la sonde DHT11
 DHT dht(DHT11PIN, DHT11);
 
 // Variables pour comparer l'ancienne valeur des sondes à la nouvelle
 int t_old = 0;
 int h_old = 0;
+char h_str[10];
+char t_str[10];
 
 // POUR DEBUG
 // Variable pour compter le nombre de connexion échouée de client.connect
@@ -67,11 +71,15 @@ void setup()
   // client.setBufferSize(255);
    
   if (client.connect(Clientarduino, MQTT_USERNAME, MQTT_KEY)) {
-    client.publish("outTopic","hello world");
-    client.subscribe("inTopic");}
+    client.publish("homeassistant/sensor/Baie/Temperature","0");
+    client.publish("homeassistant/sensor/Baie/Hygrometrie","0");
+    client.publish("homeassistant/sensor/Baie/Ventilateur1","0");
+    client.publish("homeassistant/sensor/Baie/Ventilateur2","0");
+    client.publish("homeassistant/sensor/Baie/Reboot","1");
+  }
   else {
-      Serial.print("echec, code erreur= ");
-      Serial.println(client.state());
+      if (debug) Serial.print("echec, code erreur= ");
+      if (debug) Serial.println(client.state());
   }
 
   // On initialise la sonde DHT11
@@ -87,12 +95,98 @@ void setup()
   //Pour DEBUG
   //Obtenir l'adresse IP de l'arduino
   IPAddress IP_Arduino = Ethernet.localIP();
-  Serial.println(IP_Arduino);
+  if (debug) Serial.println(IP_Arduino);
 
   Serial.println(F("*** Fin de la configuration ***"));
 }
 
 void loop()
 {
-  client.loop();
+client.loop();
+unsigned long currentMillis = millis();
+    
+// S'il s'est écoulé 30 secondes,
+if ( currentMillis - previousMillis >= 30000 ) 
+  {
+    previousMillis = currentMillis;
+
+    int h = dht.readHumidity();
+    int t = dht.readTemperature();
+    itoa(h,h_str,10);
+    itoa(t,t_str,10);
+    client.publish("homeassistant/sensor/Baie/Temperature",t_str);
+    client.publish("homeassistant/sensor/Baie/Hygrometrie",h_str);
+    if (debug) {
+    Serial.print(F("T11 "));
+    Serial.print(t);
+    Serial.print(F("C - H11 "));
+    Serial.print(h);
+    Serial.print(F("%"));
+    Serial.print(F("C || Millis : "));
+    Serial.print(millis()/1000);
+    Serial.print(F(" || NbPbDeco : "));
+    Serial.print(NombreProblemeDeconnexion);
+    Serial.print(F(" || NbErReseau : "));
+    Serial.println(NombreErreurReseau);
+    }
+
+    if((float)t>= 28.00){
+      digitalWrite(Relais_1, HIGH);
+      if (debug) Serial.println("Relais 1 allimenté");
+      client.publish("homeassistant/sensor/Baie/Ventilateur1","1");
+      etat_ventil_1= 1;
+      if((float)t>=32.00){
+        digitalWrite(Relais_2, HIGH);
+        if (debug) Serial.println("Relais 2 allimenté"); 
+        client.publish("homeassistant/sensor/Baie/Ventilateur2","1");
+        etat_ventil_2= 1;
+      }
+    }
+    else {
+      digitalWrite(Relais_1, LOW);
+      digitalWrite(Relais_2, LOW);
+      if (debug) Serial.println("Les relais sont éteint");
+      client.publish("homeassistant/sensor/Baie/Ventilateur1","0");
+      client.publish("homeassistant/sensor/Baie/Ventilateur2","0");
+      etat_ventil_1= 0;
+      etat_ventil_2= 0;
+    }
+
+    if(etat_ventil_1 != etat_ventil_1_old){
+      etat_ventil_1_old = etat_ventil_1;
+      if (debug) Serial.println("Trame ventilateur 1 envoyé");                
+    }
+
+    if(etat_ventil_2 != etat_ventil_2_old){
+      etat_ventil_2_old = etat_ventil_2;
+      if (debug) Serial.println("Trame ventilateur 2 envoyé");                  
+    }
+    if (debug) {
+    Serial.print(etat_ventil_1);
+    Serial.print(etat_ventil_1_old);
+    Serial.print(etat_ventil_2);
+    Serial.print(etat_ventil_2_old);  
+    }
+
+    if(t_old != t)
+    {
+      // POUR DEBUG
+      unsigned long DebutEnvoi = millis();
+      
+      // lance la fonction pour envoyer en GET les infos
+          t_old = t ;
+      
+      // POUR DEBUG
+      if (debug) {
+      unsigned long FinEnvoi = millis();
+      Serial.print(F("Debut envoi : "));
+      Serial.print(DebutEnvoi);
+      Serial.print(F(" - Fin envoi : "));
+      Serial.print(FinEnvoi);
+      Serial.print(F(" - Duree totale : "));
+      int DureeEnvoi = FinEnvoi - DebutEnvoi;
+      Serial.println(DureeEnvoi);
+      }
+    }
+  }
 }
