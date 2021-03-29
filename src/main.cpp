@@ -31,7 +31,7 @@ PubSubClient client(server, 1883, callback, ethClient);
 #define Relais_1 4
 #define Relais_2 5
 
-#define debug 0
+#define debug 1
 
 // On créé l'objet pour la sonde DHT11
 DHT dht(DHT11PIN, DHT11);
@@ -41,6 +41,10 @@ int t_old = 0;
 int h_old = 0;
 char h_str[10];
 char t_str[10];
+
+//Définition du nombre de démarrage
+int nb_demarrage = 0;
+int nb_demarrage_old = 0;
 
 // POUR DEBUG
 // Variable pour compter le nombre de connexion échouée de client.connect
@@ -71,6 +75,7 @@ void setup()
   // client.setBufferSize(255);
    
   if (client.connect(Clientarduino, MQTT_USERNAME, MQTT_KEY)) {
+    client.publish("homeassistant/sensor/Baie/Reboot","0");
     client.publish("homeassistant/sensor/Baie/Temperature","0");
     client.publish("homeassistant/sensor/Baie/Hygrometrie","0");
     client.publish("homeassistant/sensor/Baie/Ventilateur1","0");
@@ -122,50 +127,85 @@ if ( currentMillis - previousMillis >= 30000 )
     Serial.print(F("C - H11 "));
     Serial.print(h);
     Serial.print(F("%"));
-    Serial.print(F("C || Millis : "));
+    Serial.print(F("HR || Millis : "));
     Serial.print(millis()/1000);
     Serial.print(F(" || NbPbDeco : "));
     Serial.print(NombreProblemeDeconnexion);
     Serial.print(F(" || NbErReseau : "));
     Serial.println(NombreErreurReseau);
     }
-
-    if((float)t>= 28.00){
-      digitalWrite(Relais_1, HIGH);
-      if (debug) Serial.println("Relais 1 allimenté");
-      client.publish("homeassistant/sensor/Baie/Ventilateur1","1");
-      etat_ventil_1= 1;
-      if((float)t>=32.00){
+    if(((float)t>= 28.00) & (((etat_ventil_1 == 0) & (etat_ventil_2 == 0))|((etat_ventil_1 == 1) & (etat_ventil_2 == 1)))){            
+      if(nb_demarrage%2 ==0 ){ 
+        digitalWrite(Relais_1, HIGH);
+        digitalWrite(Relais_2, LOW);
+        if (debug) Serial.println("Relais 1 allimenté");
+        if (debug) Serial.println("Relais 2 éteint");
+        client.publish("homeassistant/sensor/Baie/Ventilateur1","1");
+        client.publish("homeassistant/sensor/Baie/Ventilateur2","0");
+        etat_ventil_1= 1;
+        }
+      else{
+        digitalWrite(Relais_2, HIGH);
+        digitalWrite(Relais_1, LOW);
+        if (debug) Serial.println("Relais 2 allimenté");
+        if (debug) Serial.println("Relais 1 éteint");
+        client.publish("homeassistant/sensor/Baie/Ventilateur2","1");
+        client.publish("homeassistant/sensor/Baie/Ventilateur1","0");
+        etat_ventil_2= 1;
+      }
+    }
+    if ((float)t< 28.00) {    
+      digitalWrite(Relais_2, LOW);
+      digitalWrite(Relais_1, LOW);
+      client.publish("homeassistant/sensor/Baie/Ventilateur2","0");
+      client.publish("homeassistant/sensor/Baie/Ventilateur1","0");
+      etat_ventil_1= 0;
+      etat_ventil_2= 0;
+      if (debug) Serial.println("Relais 1 éteint"); 
+      if (debug) Serial.println("Relais 2 éteint");
+      }
+    if(((float)t>=30.00) ){
+      if(etat_ventil_1==0){
+        digitalWrite(Relais_1, HIGH);
+        if (debug) Serial.println("Relais 1 allimenté");
+        client.publish("homeassistant/sensor/Baie/Ventilateur1","1");
+        etat_ventil_1= 1;
+        }
+      else { 
         digitalWrite(Relais_2, HIGH);
         if (debug) Serial.println("Relais 2 allimenté"); 
         client.publish("homeassistant/sensor/Baie/Ventilateur2","1");
         etat_ventil_2= 1;
+        }
       }
+    if (nb_demarrage >= 10)
+    {
+      nb_demarrage = 0;
+      if (debug) Serial.println(nb_demarrage);
     }
-    else {
-      digitalWrite(Relais_1, LOW);
-      digitalWrite(Relais_2, LOW);
-      if (debug) Serial.println("Les relais sont éteint");
-      client.publish("homeassistant/sensor/Baie/Ventilateur1","0");
-      client.publish("homeassistant/sensor/Baie/Ventilateur2","0");
-      etat_ventil_1= 0;
-      etat_ventil_2= 0;
-    }
-
+    
     if(etat_ventil_1 != etat_ventil_1_old){
       etat_ventil_1_old = etat_ventil_1;
-      if (debug) Serial.println("Trame ventilateur 1 envoyé");                
+      nb_demarrage_old = nb_demarrage;
+      nb_demarrage++;
+       if (debug) { 
+        Serial.println("Trame ventilateur 1 envoyé");
+      }
     }
 
     if(etat_ventil_2 != etat_ventil_2_old){
       etat_ventil_2_old = etat_ventil_2;
-      if (debug) Serial.println("Trame ventilateur 2 envoyé");                  
+      nb_demarrage_old = nb_demarrage;
+      nb_demarrage++;
+      if (debug) {
+        Serial.println("Trame ventilateur 2 envoyé");
+      }
     }
     if (debug) {
     Serial.print(etat_ventil_1);
     Serial.print(etat_ventil_1_old);
     Serial.print(etat_ventil_2);
-    Serial.print(etat_ventil_2_old);  
+    Serial.println(etat_ventil_2_old);  
     }
 
     if(t_old != t)
@@ -186,6 +226,10 @@ if ( currentMillis - previousMillis >= 30000 )
       Serial.print(F(" - Duree totale : "));
       int DureeEnvoi = FinEnvoi - DebutEnvoi;
       Serial.println(DureeEnvoi);
+      Serial.print("nombre de démarrage old : ");
+      Serial.println(nb_demarrage_old);
+      Serial.print("nombre de démarrage : "); 
+      Serial.println(nb_demarrage);
       }
     }
   }
