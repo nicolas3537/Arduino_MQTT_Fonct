@@ -143,6 +143,7 @@ if ( currentMillis - previousMillis >= 30000 )
         client.publish("homeassistant/sensor/Baie/Ventilateur1","1");
         client.publish("homeassistant/sensor/Baie/Ventilateur2","0");
         etat_ventil_1= 1;
+        etat_ventil_2= 0;
         }
       else{
         digitalWrite(Relais_2, HIGH);
@@ -152,6 +153,7 @@ if ( currentMillis - previousMillis >= 30000 )
         client.publish("homeassistant/sensor/Baie/Ventilateur2","1");
         client.publish("homeassistant/sensor/Baie/Ventilateur1","0");
         etat_ventil_2= 1;
+        etat_ventil_1= 0;
       }
     }
     if ((float)t< 28.00) {    
